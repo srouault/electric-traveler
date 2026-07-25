@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Electric Traveler — Supercharger routing for the BMW iX1</title>
+<meta name="description" content="Plans the fastest route across France, Belgium, the Netherlands, Luxembourg and Germany using only Tesla Superchargers, and hands you the addresses for the BMW route planner.">
+<meta name="theme-color" content="#0b1020">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1><span class="bolt">⚡</span> Electric Traveler</h1>
+  <p class="tagline">Fastest route on Tesla Superchargers only — addresses ready for your iX1's route planner.</p>
+</header>
+
+<main class="layout">
+  <aside class="panel">
+
+    <section class="card">
+      <div class="field">
+        <label for="from">From</label>
+        <div class="input-row">
+          <input id="from" type="text" placeholder="Address, town or postcode" autocomplete="off" spellcheck="false">
+          <button id="use-location" class="icon-btn" type="button" title="Use my current location">◎</button>
+        </div>
+        <ul id="from-results" class="suggestions" hidden></ul>
+        <p id="from-chosen" class="chosen" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="to">To</label>
+        <div class="input-row">
+          <input id="to" type="text" placeholder="Address, town or postcode" autocomplete="off" spellcheck="false">
+          <button id="swap" class="icon-btn" type="button" title="Swap start and destination">⇅</button>
+        </div>
+        <ul id="to-results" class="suggestions" hidden></ul>
+        <p id="to-chosen" class="chosen" hidden></p>
+      </div>
+
+      <button id="plan" class="primary" type="button">Plan the route</button>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <details class="card settings">
+      <summary>Car &amp; trip settings</summary>
+      <div class="settings-grid">
+        <label>Charge at start
+          <span class="with-unit"><input id="startSoc" type="number" min="5" max="100" step="1"><i>%</i></span>
+        </label>
+        <label>Reserve on arrival
+          <span class="with-unit"><input id="reserveSoc" type="number" min="0" max="40" step="1"><i>%</i></span>
+        </label>
+        <label>Charge ceiling
+          <span class="with-unit"><input id="maxSoc" type="number" min="50" max="100" step="1"><i>%</i></span>
+        </label>
+        <label>Usable battery
+          <span class="with-unit"><input id="batteryKwh" type="number" min="20" max="120" step="0.1"><i>kWh</i></span>
+        </label>
+        <label>Peak DC charging
+          <span class="with-unit"><input id="maxChargeKw" type="number" min="20" max="350" step="1"><i>kW</i></span>
+        </label>
+        <label>Outside temperature
+          <span class="with-unit"><input id="temperatureC" type="number" min="-25" max="45" step="1"><i>°C</i></span>
+        </label>
+        <label>Driving style
+          <select id="speedFactor">
+            <option value="1">Relaxed — sit at the limit</option>
+            <option value="1.15">Normal</option>
+            <option value="1.3">Fast — motorway cruising</option>
+          </select>
+        </label>
+        <label>Minutes lost per stop
+          <span class="with-unit"><input id="stopOverheadMin" type="number" min="0" max="20" step="1"><i>min</i></span>
+        </label>
+        <label>Detour allowed
+          <span class="with-unit"><input id="corridorKm" type="number" min="2" max="60" step="1"><i>km</i></span>
+        </label>
+      </div>
+      <button id="reset-settings" class="link-btn" type="button">Reset to iX1 eDrive20 defaults</button>
+    </details>
+
+    <section id="results" hidden>
+      <div class="card summary">
+        <div class="stats">
+          <div><b id="stat-km">—</b><span>distance</span></div>
+          <div><b id="stat-drive">—</b><span>driving</span></div>
+          <div><b id="stat-charge">—</b><span>charging</span></div>
+          <div><b id="stat-total">—</b><span>total</span></div>
+        </div>
+        <p id="stat-arrive" class="arrive"></p>
+        <div id="warnings" class="warnings" hidden></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Addresses for the BMW planner</h2>
+          <button id="copy-all" class="link-btn" type="button">Copy all</button>
+        </div>
+        <p class="hint">Enter these as waypoints, in this order.</p>
+        <ol id="stops" class="stops"></ol>
+        <div class="exports">
+          <button id="copy-detailed" class="ghost" type="button">Copy full plan</button>
+          <button id="download-csv" class="ghost" type="button">CSV</button>
+          <a id="gmaps" class="ghost" target="_blank" rel="noopener">Google Maps</a>
+        </div>
+        <p id="gmaps-note" class="hint" hidden></p>
+      </div>
+    </section>
+
+    <footer class="credits">
+      Charger data <a href="https://supercharge.info" target="_blank" rel="noopener">supercharge.info</a>
+      (<span id="data-meta">…</span>) · routing <a href="http://project-osrm.org" target="_blank" rel="noopener">OSRM</a>
+      · search <a href="https://nominatim.openstreetmap.org" target="_blank" rel="noopener">Nominatim</a>.
+      Estimates only — check charger availability before you rely on a stop.
+    </footer>
+  </aside>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+    <button id="centre-me" class="map-btn" type="button" hidden title="Centre on my location">◎</button>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

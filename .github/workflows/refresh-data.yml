@@ -1,0 +1,34 @@
+name: Refresh Supercharger data
+
+# Tesla opens new sites constantly and occasionally closes one. A stale dataset
+# quietly plans you to a charger that is not there, so re-pull it weekly.
+on:
+  schedule:
+    - cron: '17 4 * * 1' # Mondays, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: node scripts/fetch-superchargers.mjs
+
+      - name: Commit if the data moved
+        run: |
+          if git diff --quiet -- data/superchargers.json; then
+            echo "No change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/superchargers.json
+          git commit -m "Refresh Supercharger data"
+          git push
