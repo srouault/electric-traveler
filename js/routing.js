@@ -16,16 +16,21 @@ export const MAX_MATRIX_COORDS = 100;
 class RoutingError extends Error {}
 
 /**
- * Nominatim's usage policy requires an identifying User-Agent and rejects
- * requests without one. Browsers refuse to let scripts set that header and
- * silently drop it — which is fine, since they send their own.
+ * Nominatim's usage policy wants an identifying User-Agent and rejects requests
+ * that have none — which matters when this code runs under Node (scripts/).
+ *
+ * In a browser we must NOT set it. A custom User-Agent is not a CORS-safelisted
+ * header, so it turns every call into a preflighted request, and OSRM's demo
+ * server only allows `X-Requested-With, Content-Type` — the preflight fails and
+ * the fetch never happens. Browsers send their own User-Agent regardless.
  */
 const UA = 'electric-traveler/1.0 (+https://github.com/srouault/electric-traveler)';
+const INIT = typeof window === 'undefined' ? { headers: { 'User-Agent': UA } } : {};
 
 async function getJson(url, label) {
   let res;
   try {
-    res = await fetch(url, { headers: { 'User-Agent': UA } });
+    res = await fetch(url, INIT);
   } catch (cause) {
     throw new RoutingError(`${label} is unreachable — check your connection.`, { cause });
   }
