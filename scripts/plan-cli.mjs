@@ -14,14 +14,24 @@ import { geocode } from '../js/routing.js';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const args = process.argv.slice(2);
-const positional = args.filter((a) => !a.startsWith('--'));
-const flag = (name, fallback) => {
+
+// Every flag here takes a value, so skip the token after one — otherwise flag
+// values get mistaken for the from/to arguments.
+const positional = [];
+for (let i = 0; i < args.length; i++) {
+  if (args[i].startsWith('--')) i++;
+  else positional.push(args[i]);
+}
+const raw = (name) => {
   const i = args.indexOf(`--${name}`);
-  return i >= 0 ? Number(args[i + 1]) : fallback;
+  return i >= 0 ? args[i + 1] : undefined;
 };
+const flag = (name, fallback) => (raw(name) === undefined ? fallback : Number(raw(name)));
 
 if (positional.length < 2) {
-  console.error('usage: plan-cli.mjs <from> <to> [--temp C] [--start-soc 0-1] [--corridor km] [--max-soc 0-1]');
+  console.error(
+    'usage: plan-cli.mjs <from> <to> [--via "A;B"] [--temp C] [--start-soc 0-1] [--corridor km] [--max-soc 0-1]',
+  );
   process.exit(1);
 }
 
@@ -33,6 +43,9 @@ if (!fromHit || !toHit) {
   console.error('Could not geocode one of those places.');
   process.exit(1);
 }
+// Show what the geocoder picked — ambiguous place names are common in Europe.
+console.error(`  from: ${fromHit.label.slice(0, 80)}`);
+console.error(`  to:   ${toHit.label.slice(0, 80)}`);
 
 const settings = {};
 if (args.includes('--temp')) settings.temperatureC = flag('temp');
@@ -40,13 +53,24 @@ if (args.includes('--start-soc')) settings.startSoc = flag('start-soc');
 if (args.includes('--max-soc')) settings.maxSoc = flag('max-soc');
 if (args.includes('--reserve')) settings.reserveSoc = flag('reserve');
 
+// --via "Luxembourg;Liège" — semicolon separated, in order.
+const via = [];
+for (const name of (raw('via') || '').split(';').map((s) => s.trim()).filter(Boolean)) {
+  const [hit] = await geocode(name, 1);
+  if (!hit) {
+    console.error(`Could not geocode via point "${name}".`);
+    process.exit(1);
+  }
+  via.push({ lat: hit.lat, lon: hit.lon, label: name });
+}
+
 const started = Date.now();
 const result = await plan(
   { lat: fromHit.lat, lon: fromHit.lon, label: positional[0] },
   { lat: toHit.lat, lon: toHit.lon, label: positional[1] },
   sites,
   settings,
-  { corridorKm: flag('corridor', 20), onProgress: (m) => console.error(`  … ${m}`) },
+  { via, corridorKm: flag('corridor', 20), onProgress: (m) => console.error(`  … ${m}`) },
 );
 
 const hm = (min) => {

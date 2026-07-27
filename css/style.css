@@ -143,6 +143,8 @@ button, .ghost { font: inherit; cursor: pointer; }
   font-weight: 600;
 }
 
+.add-via { display: block; margin: -4px 0 12px; }
+
 .status { margin: 9px 0 0; font-size: 13px; color: var(--muted); min-height: 1.2em; }
 .status.error { color: var(--warn); }
 
@@ -281,6 +283,7 @@ button, .ghost { font: inherit; cursor: pointer; }
 .pin-start { background: #16a34a; }
 .pin-end { background: #dc2626; }
 .pin-stop { background: #2f7de1; }
+.pin-via { background: #7c3aed; }
 .pin-me { background: #0ea5e9; font-size: 10px; }
 
 .leaflet-popup-content { font: 13px/1.45 ui-sans-serif, system-ui, sans-serif; }

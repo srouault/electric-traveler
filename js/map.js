@@ -50,6 +50,12 @@ export function drawPlan(plan, start, end) {
     .bindPopup(`<b>Destination</b><br>${esc(end.label || '')}`)
     .addTo(stopLayer);
 
+  (plan.via || []).forEach((v, i) => {
+    L.marker([v.lat, v.lon], { icon: pin('pin-via', 'V', v.label || 'Via') })
+      .bindPopup(`<b>Via ${i + 1}</b><br>${esc(v.label || '')}`)
+      .addTo(stopLayer);
+  });
+
   plan.stops.forEach((s, i) => {
     L.marker([s.lat, s.lon], { icon: pin('pin-stop', String(i + 1), s.name) })
       .bindPopup(

@@ -100,11 +100,7 @@ function loadSettings() {
 /* ------------------------------------------------------------ place inputs */
 
 /** Wires one address box to Nominatim, with a suggestion dropdown. */
-function setupPlaceInput(inputId, listId, chosenId, onPick) {
-  const input = $(inputId);
-  const list = $(listId);
-  const chosen = $(chosenId);
-
+function setupPlaceInput(input, list, chosen, onPick) {
   const hide = () => {
     list.hidden = true;
     list.innerHTML = '';
@@ -155,6 +151,59 @@ function setupPlaceInput(inputId, listId, chosenId, onPick) {
   });
 
   return { setChosen, input };
+}
+
+/* ------------------------------------------------------------- via points */
+
+const vias = []; // ordered; screen order is the order they're driven
+
+/** Adds a "via" box between the start and destination fields. */
+function addVia() {
+  const row = document.createElement('div');
+  row.className = 'field';
+  row.innerHTML = `
+    <label>Via</label>
+    <div class="input-row">
+      <input type="text" placeholder="Town or address to route through" autocomplete="off" spellcheck="false">
+      <button class="icon-btn" type="button" title="Remove this via point">✕</button>
+    </div>
+    <ul class="suggestions" hidden></ul>
+    <p class="chosen" hidden></p>`;
+  $('vias').appendChild(row);
+
+  const entry = { row, place: null };
+  entry.ctl = setupPlaceInput(
+    row.querySelector('input'),
+    row.querySelector('.suggestions'),
+    row.querySelector('.chosen'),
+    (p) => {
+      entry.place = p;
+    },
+  );
+  row.querySelector('.input-row button').addEventListener('click', () => {
+    row.remove();
+    vias.splice(vias.indexOf(entry), 1);
+  });
+  vias.push(entry);
+  row.querySelector('input').focus();
+}
+
+/** Resolves every via box that has text in it, in screen order. */
+async function resolveVias() {
+  const out = [];
+  for (const v of vias) {
+    if (v.place) {
+      out.push(v.place);
+      continue;
+    }
+    const typed = v.ctl.input.value.trim();
+    if (!typed) continue;
+    const [hit] = await geocode(typed, 1);
+    if (!hit) throw new PlanError(`Could not find the via point "${typed}".`);
+    v.ctl.setChosen(hit);
+    out.push(hit);
+  }
+  return out;
 }
 
 /**
@@ -265,7 +314,8 @@ async function runPlan(fromCtl, toCtl) {
       return;
     }
 
-    const result = await plan(start, end, sites, vehicle, { corridorKm, onProgress: (m) => say(m) });
+    const via = await resolveVias();
+    const result = await plan(start, end, sites, vehicle, { via, corridorKm, onProgress: (m) => say(m) });
     current = result;
     renderPlan(result);
     drawPlan(result, start, end);
@@ -291,12 +341,13 @@ async function main() {
   initMap('map');
   loadSettings();
 
-  const fromCtl = setupPlaceInput('from', 'from-results', 'from-chosen', (p) => {
+  const fromCtl = setupPlaceInput($('from'), $('from-results'), $('from-chosen'), (p) => {
     start = p;
   });
-  const toCtl = setupPlaceInput('to', 'to-results', 'to-chosen', (p) => {
+  const toCtl = setupPlaceInput($('to'), $('to-results'), $('to-chosen'), (p) => {
     end = p;
   });
+  $('add-via').addEventListener('click', () => addVia());
 
   try {
     const res = await fetch(new URL('../data/superchargers.json', import.meta.url));

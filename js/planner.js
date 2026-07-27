@@ -92,10 +92,19 @@ function search(nodes, m, cfg, maxDepartSoc) {
   // no cold penalty — because this bound must never discard a leg that the
   // real, per-leg energy check below would have accepted.
   const fullRangeKm = rangeAt(1, 60, { ...cfg, speedFactor: 1, temperatureC: Math.max(cfg.temperatureC, 20) });
+  // A "via" is a place the trip must pass through, so no edge may jump over
+  // one. Capping each node's successors at the next via downstream enforces
+  // that without any extra bookkeeping in the search itself.
+  const nextVia = new Int32Array(n).fill(n - 1);
+  for (let i = n - 2; i >= 0; i--) {
+    nextVia[i] = nodes[i + 1].isVia ? i + 1 : nextVia[i + 1];
+  }
+
   const successors = [];
   for (let i = 0; i < n; i++) {
     const list = [];
-    for (let j = i + 1; j < n; j++) {
+    const limit = Math.min(n - 1, nextVia[i]);
+    for (let j = i + 1; j <= limit; j++) {
       const km = m.km[i][j];
       if (km != null && km <= fullRangeKm * 1.05) list.push(j);
     }
@@ -117,7 +126,8 @@ function search(nodes, m, cfg, maxDepartSoc) {
   for (let i = 0; i < n - 1; i++) {
     const succ = successors[i];
     if (!succ.length) continue;
-    const isCharger = i > 0; // the origin is not a charging opportunity
+    // Neither the origin nor a via point is a charging opportunity.
+    const isCharger = i > 0 && !nodes[i].isVia;
     for (let k = reserveBucket; k < BUCKETS; k++) {
       const arrivedAt = best[i * BUCKETS + k];
       if (!Number.isFinite(arrivedAt)) continue;
@@ -236,25 +246,53 @@ function schedule(stops, legs, cfg) {
 }
 
 /**
+ * Collapses the routed legs onto the charging stops.
+ *
+ * Via points are waypoints in the driven route but not stops, so from the
+ * energy schedule's point of view the legs either side of one are a single leg.
+ */
+function mergeLegs(full, waypoints) {
+  if (full.legs.length !== waypoints.length + 1) {
+    return [{ km: full.km, minutes: full.minutes }];
+  }
+  const merged = [];
+  let km = 0;
+  let minutes = 0;
+  for (let i = 0; i < full.legs.length; i++) {
+    km += full.legs[i].km;
+    minutes += full.legs[i].minutes;
+    // legs[i] arrives at waypoints[i]; the final leg arrives at the destination.
+    if (i >= waypoints.length || waypoints[i].isStop) {
+      merged.push({ km, minutes });
+      km = 0;
+      minutes = 0;
+    }
+  }
+  return merged;
+}
+
+/**
  * Plans a trip.
  *
  * @param {{lat,lon,label?}} start
  * @param {{lat,lon,label?}} end
  * @param {Array} sites   charger dataset
  * @param {object} settings  overrides for the vehicle/trip defaults
- * @param {{corridorKm?:number, onProgress?:Function}} options
+ * @param {{corridorKm?:number, via?:Array, onProgress?:Function}} options
+ *   `via` is an ordered list of {lat, lon, label} the route must pass through.
  */
 export async function plan(start, end, sites, settings = {}, options = {}) {
   const cfg = { ...DEFAULTS, ...settings };
   const corridorKm = options.corridorKm ?? 20;
+  const via = options.via ?? [];
   const say = options.onProgress || (() => {});
 
   if (cfg.startSoc <= cfg.reserveSoc) {
     throw new PlanError('Starting charge is at or below your reserve — nothing to drive on.');
   }
 
-  say('Finding the direct route…');
-  const direct = await route([start, end]);
+  say(via.length ? 'Finding the route through your via points…' : 'Finding the direct route…');
+  const direct = await route([start, ...via, end]);
 
   // Can we simply drive it? Then no amount of cleverness helps.
   const directEnergy = energyFor(direct.km, direct.km / (direct.minutes / 60), cfg) / cfg.batteryKwh;
@@ -268,6 +306,7 @@ export async function plan(start, end, sites, settings = {}, options = {}) {
       chargeMinutes: 0,
       totalMinutes: direct.minutes,
       arrivalSoc: cfg.startSoc - directEnergy,
+      via,
       candidatesConsidered: 0,
       warnings: [],
       cfg,
@@ -282,12 +321,27 @@ export async function plan(start, end, sites, settings = {}, options = {}) {
       `No usable Superchargers within ${corridorKm} km of this route. Widen the corridor, or the route may leave the covered countries (FR, BE, NL, LU, DE).`,
     );
   }
-  const candidates = selectCandidates(projected, corridorKm);
+  const candidates = selectCandidates(projected, corridorKm, MAX_CANDIDATES - via.length);
 
   say(`Measuring ${candidates.length} candidates…`);
+  // Via points ride in the same ordered node list as the chargers, so the
+  // search sees one sequence and the "don't skip a via" rule is just an
+  // ordering constraint.
+  const viaNodes = via.map((v) => ({
+    ...v,
+    name: v.label || 'Via',
+    kw: 0,
+    isVia: true,
+    progressKm: projectOntoRoute([v], thinned, Infinity)[0]?.progressKm ?? 0,
+  }));
+  const middle = [
+    ...candidates.map((c) => ({ ...c.site, detourKm: c.detourKm, progressKm: c.progressKm })),
+    ...viaNodes,
+  ].sort((a, b) => a.progressKm - b.progressKm);
+
   const nodes = [
     { ...start, name: start.label || 'Start', kw: 0 },
-    ...candidates.map((c) => ({ ...c.site, detourKm: c.detourKm })),
+    ...middle,
     { ...end, name: end.label || 'Destination', kw: 0 },
   ];
   const m = await matrix(nodes);
@@ -307,15 +361,17 @@ export async function plan(start, end, sites, settings = {}, options = {}) {
   }
 
   // The search may thread the path through a charger without charging at it,
-  // simply because it sits on the fastest road. Those are not stops.
-  const chosen = result.path
+  // simply because it sits on the fastest road. Those are not stops — but via
+  // points still have to be waypoints in the final route.
+  const waypoints = result.path
     .slice(1, -1)
-    .filter((p) => p.departBucket > p.arriveBucket)
-    .map((p) => nodes[p.node]);
+    .filter((p) => nodes[p.node].isVia || p.departBucket > p.arriveBucket)
+    .map((p) => ({ node: nodes[p.node], isStop: !nodes[p.node].isVia }));
+  const chosen = waypoints.filter((w) => w.isStop).map((w) => w.node);
 
   say('Building the final route…');
-  const full = await route([start, ...chosen, end]);
-  const legs = full.legs.length === chosen.length + 1 ? full.legs : [{ km: full.km, minutes: full.minutes }];
+  const full = await route([start, ...waypoints.map((w) => w.node), end]);
+  const legs = mergeLegs(full, waypoints);
   const { stops, arrivalSoc, warnings } = schedule(chosen, legs, cfg);
 
   if (relaxed) {
@@ -332,6 +388,7 @@ export async function plan(start, end, sites, settings = {}, options = {}) {
     chargeMinutes: chargeTotal,
     totalMinutes: full.minutes + chargeTotal,
     arrivalSoc,
+    via,
     candidatesConsidered: candidates.length,
     warnings,
     cfg,
