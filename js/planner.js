@@ -19,7 +19,7 @@
 
 import { matrix, route, MAX_MATRIX_COORDS } from './routing.js';
 import { projectOntoRoute, simplify } from './geo.js';
-import { DEFAULTS, chargeMinutes, energyFor, rangeAt } from './vehicle.js';
+import { DEFAULTS, chargeMinutes, energyFor, legMinutes, rangeAt } from './vehicle.js';
 
 /** SoC is discretised for the search. 2% ≈ 1.3 kWh ≈ 6 km — finer than we can predict anyway. */
 const SOC_STEP = 0.02;
@@ -141,12 +141,13 @@ function search(nodes, m, cfg, maxDepartSoc) {
           const km = m.km[i][j];
           const min = m.minutes[i][j];
           if (min == null || min <= 0) continue;
-          const speed = km / (min / 60);
-          const socArrive = departSoc - energyFor(km, speed, cfg) / battery;
+          // Cost the leg at the speed we'd really drive it, not the router's.
+          const routerSpeed = km / (min / 60);
+          const socArrive = departSoc - energyFor(km, routerSpeed, cfg) / battery;
           if (socArrive < cfg.reserveSoc - 1e-9) continue;
 
           const kb = bucketOf(socArrive);
-          const total = departTime + min;
+          const total = departTime + legMinutes(km, routerSpeed, cfg);
           const idx = j * BUCKETS + kb;
           if (total < best[idx]) {
             best[idx] = total;
@@ -204,10 +205,7 @@ function schedule(stops, legs, cfg) {
   let soc = cfg.startSoc;
 
   // legEnergy[i] is the leg *into* stop i; the last entry runs to the destination.
-  const legEnergy = legs.map((leg) => {
-    const speed = leg.minutes > 0 ? leg.km / (leg.minutes / 60) : 90;
-    return energyFor(leg.km, speed, cfg) / battery;
-  });
+  const legEnergy = legs.map((leg) => energyFor(leg.km, leg.routerSpeed, cfg) / battery);
 
   for (let i = 0; i < stops.length; i++) {
     soc -= legEnergy[i];
@@ -272,6 +270,17 @@ function mergeLegs(full, waypoints) {
 }
 
 /**
+ * Restates each leg's duration at the speed we will actually drive, keeping the
+ * router's own speed alongside it so the energy model can still see it.
+ */
+function adjustLegs(legs, cfg) {
+  return legs.map((leg) => {
+    const routerSpeed = leg.minutes > 0 ? leg.km / (leg.minutes / 60) : 90;
+    return { km: leg.km, minutes: legMinutes(leg.km, routerSpeed, cfg), routerSpeed };
+  });
+}
+
+/**
  * Plans a trip.
  *
  * @param {{lat,lon,label?}} start
@@ -295,16 +304,18 @@ export async function plan(start, end, sites, settings = {}, options = {}) {
   const direct = await route([start, ...via, end]);
 
   // Can we simply drive it? Then no amount of cleverness helps.
-  const directEnergy = energyFor(direct.km, direct.km / (direct.minutes / 60), cfg) / cfg.batteryKwh;
+  const directSpeed = direct.km / (direct.minutes / 60);
+  const directEnergy = energyFor(direct.km, directSpeed, cfg) / cfg.batteryKwh;
   if (cfg.startSoc - directEnergy >= cfg.reserveSoc) {
+    const directMinutes = legMinutes(direct.km, directSpeed, cfg);
     return {
       stops: [],
-      legs: [{ km: direct.km, minutes: direct.minutes }],
+      legs: [{ km: direct.km, minutes: directMinutes, routerSpeed: directSpeed }],
       line: direct.line,
       totalKm: direct.km,
-      driveMinutes: direct.minutes,
+      driveMinutes: directMinutes,
       chargeMinutes: 0,
-      totalMinutes: direct.minutes,
+      totalMinutes: directMinutes,
       arrivalSoc: cfg.startSoc - directEnergy,
       via,
       candidatesConsidered: 0,
@@ -371,7 +382,7 @@ export async function plan(start, end, sites, settings = {}, options = {}) {
 
   say('Building the final route…');
   const full = await route([start, ...waypoints.map((w) => w.node), end]);
-  const legs = mergeLegs(full, waypoints);
+  const legs = adjustLegs(mergeLegs(full, waypoints), cfg);
   const { stops, arrivalSoc, warnings } = schedule(chosen, legs, cfg);
 
   if (relaxed) {
@@ -379,14 +390,15 @@ export async function plan(start, end, sites, settings = {}, options = {}) {
   }
 
   const chargeTotal = stops.reduce((sum, s) => sum + s.stopMinutes, 0);
+  const driveTotal = legs.reduce((sum, l) => sum + l.minutes, 0);
   return {
     stops,
     legs,
     line: full.line,
     totalKm: full.km,
-    driveMinutes: full.minutes,
+    driveMinutes: driveTotal,
     chargeMinutes: chargeTotal,
-    totalMinutes: full.minutes + chargeTotal,
+    totalMinutes: driveTotal + chargeTotal,
     arrivalSoc,
     via,
     candidatesConsidered: candidates.length,

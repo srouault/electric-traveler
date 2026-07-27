@@ -22,11 +22,15 @@ export const DEFAULTS = {
   dragKwhPer100PerKmh2: 0.0006818,
   // Ambient temperature in °C. Cold hurts twice: chemistry and cabin heating.
   temperatureC: 15,
-  // OSRM's car profile uses conservative free-flow speeds — it will call a
-  // French autoroute ~95 km/h when you would really sit at 120. Taking its
-  // speeds at face value understates consumption and plans too few stops, so
-  // we scale them. 1.0 relaxed, 1.15 normal, 1.3 fast.
+  // OSRM's car profile uses conservative free-flow speeds on ordinary roads —
+  // it will call a two-lane N-road ~70 km/h when you would really sit at 90.
+  // 1.0 relaxed, 1.15 normal, 1.3 fast.
   speedFactor: 1.15,
+  // …but it goes the other way on motorways: OSRM scores German autobahn
+  // tagged `maxspeed=none` at 140 km/h, so scaling that up again implies
+  // 161 km/h. Nobody drives an iX1 like that, and it made German corridors
+  // look faster than they are. Cap the speed we plan on.
+  maxSpeedKmh: 130,
   // Never plan to arrive anywhere below this. This is the whole safety margin.
   reserveSoc: 0.10,
   // Charging above ~80% is slow enough that it is nearly always faster to stop
@@ -61,12 +65,28 @@ export function temperatureFactor(tempC) {
 }
 
 /**
+ * The speed you will really average on a leg the router thinks averages
+ * `speedKmh`: its figure scaled by driving style, then capped at what you are
+ * actually willing to drive.
+ *
+ * Everything downstream — consumption *and* journey time — runs off this, so a
+ * corridor is never credited with a speed the driver would not use.
+ */
+export function effectiveSpeed(speedKmh, cfg = DEFAULTS) {
+  return Math.min(speedKmh * (cfg.speedFactor ?? 1), cfg.maxSpeedKmh ?? Infinity);
+}
+
+/** Minutes to drive `km` at the effective speed for a router-predicted leg. */
+export function legMinutes(km, routerSpeedKmh, cfg = DEFAULTS) {
+  return (km / effectiveSpeed(routerSpeedKmh, cfg)) * 60;
+}
+
+/**
  * Energy in kWh to cover `km`, where `speedKmh` is the average speed the router
- * predicts for the leg — scaled by `speedFactor` into the speed you will
- * actually drive.
+ * predicts for the leg.
  */
 export function energyFor(km, speedKmh, cfg = DEFAULTS) {
-  return (km * consumptionAt(speedKmh * (cfg.speedFactor ?? 1), cfg)) / 100;
+  return (km * consumptionAt(effectiveSpeed(speedKmh, cfg), cfg)) / 100;
 }
 
 /**

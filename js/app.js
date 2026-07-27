@@ -18,6 +18,7 @@ const FIELDS = {
   maxChargeKw: {},
   temperatureC: {},
   speedFactor: {},
+  maxSpeedKmh: {},
   stopOverheadMin: {},
 };
 

@@ -54,6 +54,7 @@ from straight-line distance.
 | Peak DC charging | 130 kW | The car, not the Supercharger, is the limit here. |
 | Outside temperature | 15 °C | Drives the cold-weather consumption penalty. |
 | Driving style | Normal | Scales the router's speeds — see the caveat below. |
+| Max cruising speed | 130 km/h | Caps the speed used for both time and consumption. |
 | Detour allowed | 20 km | How far off the direct line a charger may sit. |
 
 Settings persist in your browser.
@@ -76,11 +77,25 @@ generic iX1 charging curve — not from your car's real telemetry. Elevation, wi
 traffic, payload and a cold battery all move the numbers. Keep the reserve
 meaningful and treat a plan as a starting point.
 
-**Router speeds run low.** OSRM's car profile uses conservative free-flow speeds —
-it will call a French autoroute ~95 km/h when you'd really sit at 120. The
-**Driving style** setting scales those speeds before computing consumption
-(1.15× by default). Set it to *Fast* if you cruise hard; underestimating speed
-underestimates consumption, which is the dangerous direction.
+**Router speeds are uneven.** OSRM's car profile is conservative on ordinary
+roads but generous on motorways — it scores German autobahn tagged
+`maxspeed=none` at 140 km/h. So **Driving style** scales its speeds up (1.15×
+by default) and **Max cruising speed** then caps the result, for both journey
+time and consumption. Underestimating speed underestimates consumption, which is
+the dangerous direction; overestimating it just adds a stop you may not need.
+
+**The tool does not choose your corridor — OSRM does.** It optimises charging
+stops *along* the route OSRM returns, plus anything within the detour corridor.
+It does not compare fundamentally different road corridors, and OSRM's
+motorway-speed bias tends to favour German autobahn over the Belgian and
+Luxembourgish alternatives even when they are the same distance or shorter. The
+speed cap only partly offsets this, because it applies to whole legs while the
+bias lives in individual road segments.
+
+**In practice: treat corridor time differences under ~30 minutes as noise.**
+When two corridors are within a few kilometres of each other, pick on tolls,
+traffic, stall counts or scenery. Use via points (or `compare-routes.mjs`) to
+force a corridor and see what it really costs.
 
 **Availability is not checked.** The dataset has no live stall occupancy. On a
 Friday in August, assume a queue.
