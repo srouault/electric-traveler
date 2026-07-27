@@ -300,8 +300,13 @@ export async function plan(start, end, sites, settings = {}, options = {}) {
     throw new PlanError('Starting charge is at or below your reserve — nothing to drive on.');
   }
 
-  say(via.length ? 'Finding the route through your via points…' : 'Finding the direct route…');
-  const direct = await route([start, ...via, end]);
+  // A caller comparing corridors already has the base route and passes it in,
+  // so we neither refetch it nor lose the corridor it describes.
+  let direct = options.baseRoute;
+  if (!direct) {
+    say(via.length ? 'Finding the route through your via points…' : 'Finding the direct route…');
+    direct = await route([start, ...via, end]);
+  }
 
   // Can we simply drive it? Then no amount of cleverness helps.
   const directSpeed = direct.km / (direct.minutes / 60);

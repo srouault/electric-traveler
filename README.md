@@ -19,6 +19,26 @@ Static site, no backend, no API keys. Runs on GitHub Pages.
 - Copy one address, copy all of them, download a CSV, or open the trip in Google Maps.
 - Tracks your current position on the map, and can use it as the starting point.
 
+### Comparing whole routes, not just stops
+
+**Compare alternative routes** answers a different question: not "where do I
+charge on this road" but "is this even the right road".
+
+It cannot rely on OSRM's own `alternatives` — over 1,300 km OSRM offers a single
+alternative, 146 km worse, and never surfaces the corridor you actually want. So
+corridors are discovered by probing: push a waypoint out sideways from the
+direct line at several points and distances, and see what road network answers.
+Probes that merely nudge the same motorway are folded together, judged on the
+*widest* gap between two routes rather than the average — routes that share
+800 km and then split by 100 km average out to looking identical, which is
+exactly the case worth telling apart.
+
+Each surviving corridor is then fully planned and ranked by arrival time, since
+a corridor can lose on charging what it won on the road. Each is named after the
+place where it strays furthest from the direct route.
+
+This costs roughly twenty routing calls, which is why it is a separate button.
+
 ### Why "fastest" is not "fewest stops"
 
 The iX1 peaks at ~130 kW and holds it to roughly 30% charge, then tapers hard —
@@ -84,18 +104,15 @@ by default) and **Max cruising speed** then caps the result, for both journey
 time and consumption. Underestimating speed underestimates consumption, which is
 the dangerous direction; overestimating it just adds a stop you may not need.
 
-**The tool does not choose your corridor — OSRM does.** It optimises charging
-stops *along* the route OSRM returns, plus anything within the detour corridor.
-It does not compare fundamentally different road corridors, and OSRM's
-motorway-speed bias tends to favour German autobahn over the Belgian and
-Luxembourgish alternatives even when they are the same distance or shorter. The
-speed cap only partly offsets this, because it applies to whole legs while the
-bias lives in individual road segments.
+**A single plan follows OSRM's chosen corridor.** *Plan the route* optimises
+charging along the one route OSRM returns. Because OSRM's motorway-speed bias
+favours German autobahn over the Belgian and Luxembourgish alternatives even
+when those are the same distance or shorter, that single answer can be the wrong
+road entirely. Use **Compare alternative routes** to see the others.
 
 **In practice: treat corridor time differences under ~30 minutes as noise.**
 When two corridors are within a few kilometres of each other, pick on tolls,
-traffic, stall counts or scenery. Use via points (or `compare-routes.mjs`) to
-force a corridor and see what it really costs.
+traffic, stall counts or scenery rather than a modelled time difference.
 
 **Availability is not checked.** The dataset has no live stall occupancy. On a
 Friday in August, assume a queue.
@@ -126,6 +143,14 @@ Plan a trip from the terminal, using the same modules the page does:
 ```bash
 node scripts/plan-cli.mjs "Brussels" "Nice"
 node scripts/plan-cli.mjs "Amsterdam" "Munich" --temp -5 --start-soc 0.7 --corridor 30
+node scripts/plan-cli.mjs "Brussels" "Lyon" --via "Luxembourg;Metz"
+```
+
+Compare whole corridors, either discovered automatically or named by hand:
+
+```bash
+node scripts/compare-routes.mjs "Saint-Raphaël, Var, France" "Zwolle, Netherlands" --auto
+node scripts/compare-routes.mjs "Brussels" "Nice" --route "Direct|" --route "via Lyon|Lyon"
 ```
 
 ## Refreshing the charger data
@@ -146,12 +171,14 @@ js/vehicle.js                    consumption + charging-curve model
 js/geo.js                        distances, route corridor projection
 js/routing.js                    OSRM + Nominatim clients
 js/planner.js                    candidate selection + the optimiser
+js/corridors.js                  discovers and ranks distinct road corridors
 js/map.js                        Leaflet map, markers, live location
 js/export.js                     addresses, CSV, Google Maps links
 js/app.js                        UI wiring
 data/superchargers.json          generated — do not hand-edit
 scripts/fetch-superchargers.mjs  regenerates the dataset
 scripts/plan-cli.mjs             headless planner, for testing
+scripts/compare-routes.mjs       ranks several routings side by side
 ```
 
 ## Credits and limits

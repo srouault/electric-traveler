@@ -1,6 +1,7 @@
 /** Wires the page together: inputs → planner → map, list and exports. */
 
 import { plan, PlanError } from './planner.js';
+import { planCorridors } from './corridors.js';
 import { geocode, reverseGeocode, RoutingError } from './routing.js';
 import { DEFAULTS } from './vehicle.js';
 import { initMap, drawPlan, clearPlan, watchMe, centreOnMe, hasFix } from './map.js';
@@ -294,6 +295,92 @@ function renderPlan(result) {
   $('results').hidden = false;
 }
 
+/* ----------------------------------------------------------- alternatives */
+
+/** Renders the corridor list and wires selection. */
+function renderAlternatives(options) {
+  const list = $('alternatives');
+  list.innerHTML = '';
+  const fastest = options[0].plan.totalMinutes;
+
+  options.forEach((opt, i) => {
+    const li = document.createElement('li');
+    li.className = 'alt';
+    li.tabIndex = 0;
+    li.setAttribute('role', 'button');
+
+    const delta = opt.plan.totalMinutes - fastest;
+    const name = document.createElement('b');
+    name.textContent = opt.label;
+    const figures = document.createElement('span');
+    figures.textContent =
+      `${opt.plan.totalKm.toFixed(0)} km · ${hm(opt.plan.totalMinutes)} · ` +
+      `${opt.plan.stops.length} stop${opt.plan.stops.length === 1 ? '' : 's'}`;
+    const badge = document.createElement('i');
+    badge.textContent = delta < 1 ? 'fastest' : `+${hm(delta)}`;
+
+    li.append(name, figures, badge);
+    const choose = () => {
+      [...list.children].forEach((c) => c.classList.remove('active'));
+      li.classList.add('active');
+      current = opt.plan;
+      renderPlan(opt.plan);
+      drawPlan(opt.plan, start, end);
+    };
+    li.addEventListener('click', choose);
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        choose();
+      }
+    });
+    if (i === 0) li.classList.add('active');
+    list.appendChild(li);
+  });
+
+  $('alternatives-card').hidden = false;
+}
+
+async function runCompare(fromCtl, toCtl) {
+  const button = $('compare');
+  button.disabled = true;
+  try {
+    await resolveEndpoints(fromCtl, toCtl);
+    if (!start || !end) {
+      say('Enter a start and a destination.', true);
+      return;
+    }
+    if (vias.length) {
+      // Via points already pin the corridor, so there is nothing left to compare.
+      say('Remove the via points first — they already fix which way the route goes.', true);
+      return;
+    }
+
+    persistSettings();
+    const { corridorKm, ...vehicle } = readSettings();
+    const { routes, failed } = await planCorridors(start, end, sites, vehicle, {
+      corridorKm,
+      limit: 4,
+      onProgress: (m) => say(m),
+    });
+
+    renderAlternatives(routes);
+    current = routes[0].plan;
+    renderPlan(routes[0].plan);
+    drawPlan(routes[0].plan, start, end);
+    say(
+      `Compared ${routes.length} distinct corridor${routes.length === 1 ? '' : 's'}` +
+        (failed.length ? `; ${failed.length} could not be planned.` : '.'),
+    );
+  } catch (err) {
+    const known = err instanceof PlanError || err instanceof RoutingError;
+    say(known ? err.message : `Could not compare routes: ${err.message}`, true);
+    if (!known) console.error(err);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 /* ------------------------------------------------------------------- plan  */
 
 async function runPlan(fromCtl, toCtl) {
@@ -318,6 +405,7 @@ async function runPlan(fromCtl, toCtl) {
     const via = await resolveVias();
     const result = await plan(start, end, sites, vehicle, { via, corridorKm, onProgress: (m) => say(m) });
     current = result;
+    $('alternatives-card').hidden = true; // a single plan is not a comparison
     renderPlan(result);
     drawPlan(result, start, end);
     say(
@@ -363,6 +451,7 @@ async function main() {
   }
 
   $('plan').addEventListener('click', () => runPlan(fromCtl, toCtl));
+  $('compare').addEventListener('click', () => runCompare(fromCtl, toCtl));
 
   $('swap').addEventListener('click', () => {
     const a = $('from').value;

@@ -13,6 +13,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { plan } from '../js/planner.js';
+import { planCorridors } from '../js/corridors.js';
 import { geocode } from '../js/routing.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -30,8 +31,11 @@ const raw = (n) => {
 const num = (n, d) => (raw(n) === undefined ? d : Number(raw(n)));
 const routes = args.map((a, i) => (a === '--route' ? args[i + 1] : null)).filter(Boolean);
 
-if (positional.length < 2 || !routes.length) {
-  console.error('usage: compare-routes.mjs <from> <to> --route "Label|via;via" [--route …] [--temp C] [--start-soc 0-1]');
+const auto = args.includes('--auto');
+
+if (positional.length < 2 || (!routes.length && !auto)) {
+  console.error('usage: compare-routes.mjs <from> <to> (--auto | --route "Label|via;via" …) [--temp C] [--start-soc 0-1]');
+  console.error('  --auto  discover distinct road corridors automatically instead of naming vias');
   process.exit(1);
 }
 
@@ -71,6 +75,17 @@ const hm = (min) => {
 const pct = (s) => `${Math.round(s * 100)}%`;
 
 const results = [];
+
+if (auto) {
+  const { routes: found, failed } = await planCorridors(from, to, sites, settings, {
+    corridorKm: num('corridor', 20),
+    limit: num('limit', 4),
+    onProgress: (m) => process.stderr.write(`  … ${m}\n`),
+  });
+  for (const f of found) results.push({ label: f.label, viaNames: [], r: f.plan });
+  for (const f of failed) results.push({ label: f.label, viaNames: [], error: f.error });
+}
+
 for (const spec of routes) {
   const [label, viaSpec = ''] = spec.split('|');
   const viaNames = viaSpec.split(';').map((s) => s.trim()).filter(Boolean);

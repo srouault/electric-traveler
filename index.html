@@ -46,6 +46,7 @@
       </div>
 
       <button id="plan" class="primary" type="button">Plan the route</button>
+      <button id="compare" class="ghost wide" type="button">Compare alternative routes</button>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </section>
 
@@ -91,6 +92,12 @@
     </details>
 
     <section id="results" hidden>
+      <div class="card" id="alternatives-card" hidden>
+        <div class="card-head"><h2>Route options</h2></div>
+        <p class="hint">Fastest first. Anything inside ~30 minutes is within this model's margin — pick on stall counts, tolls or traffic.</p>
+        <ul id="alternatives" class="alts"></ul>
+      </div>
+
       <div class="card summary">
         <div class="stats">
           <div><b id="stat-km">—</b><span>distance</span></div>

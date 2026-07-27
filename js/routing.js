@@ -52,22 +52,27 @@ const coordList = (points) => points.map((p) => `${p.lon},${p.lat}`).join(';');
  * Road route through the given points, in order.
  * Returns total distance/duration, per-leg figures and a decoded polyline.
  */
-export async function route(points, { geometry = true } = {}) {
+export async function route(points, { geometry = true, overview = 'full', alternatives = 0 } = {}) {
   const params = new URLSearchParams({
-    overview: geometry ? 'full' : 'false',
+    overview: geometry ? overview : 'false',
     geometries: 'polyline6',
     annotations: 'false',
     steps: 'false',
   });
+  if (alternatives) params.set('alternatives', String(alternatives));
   const json = await getJson(`${OSRM}/route/v1/driving/${coordList(points)}?${params}`, 'OSRM routing');
-  const r = json.routes?.[0];
-  if (!r) throw new RoutingError('No drivable route between those points.');
-  return {
+  if (!json.routes?.length) throw new RoutingError('No drivable route between those points.');
+
+  const shape = (r) => ({
     km: r.distance / 1000,
     minutes: r.duration / 60,
     legs: (r.legs || []).map((l) => ({ km: l.distance / 1000, minutes: l.duration / 60 })),
     line: geometry ? decodePolyline(r.geometry, 6) : [],
-  };
+  });
+  const first = shape(json.routes[0]);
+  // Alternatives ride along on the primary result rather than changing its shape.
+  if (alternatives) first.alternatives = json.routes.slice(1).map(shape);
+  return first;
 }
 
 /**
