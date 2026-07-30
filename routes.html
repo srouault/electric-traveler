@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Saved routes — Electric Traveler</title>
+<meta name="description" content="Your saved Supercharger routes, with live stall availability per stop.">
+<meta name="theme-color" content="#0b1020">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1><span class="bolt">⚡</span> Saved routes</h1>
+  <p class="tagline">Live Supercharger availability for a route you've planned. <a href="index.html">Plan a new one →</a></p>
+</header>
+
+<main class="layout">
+  <aside class="panel">
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Your routes</h2>
+        <span id="route-count" class="hint" style="margin:0"></span>
+      </div>
+      <ul id="route-list" class="saved"></ul>
+      <p id="no-routes" class="hint" hidden>
+        Nothing saved yet. Plan a route on the <a href="index.html">main page</a> and hit <b>Save this route</b>.
+      </p>
+    </section>
+
+    <details class="card settings" id="key-card">
+      <summary>Live availability — Google API key</summary>
+      <p class="hint">
+        Live stall counts come from the Google Places API. Tesla's own endpoints need a Tesla
+        account and block outside apps, so this is the practical route.
+      </p>
+      <div class="field">
+        <label for="api-key">API key</label>
+        <div class="input-row">
+          <input id="api-key" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
+          <button id="save-key" class="icon-btn" type="button" title="Save key">✓</button>
+        </div>
+        <p id="key-state" class="chosen" hidden></p>
+      </div>
+      <p class="hint">
+        Stored in this browser only. In Google Cloud: enable <b>Places API (New)</b>, then restrict
+        the key to <b>HTTP referrers</b> for this site. Each refresh costs one billable call per
+        stop, so refresh deliberately rather than leaving it on a timer.
+      </p>
+    </details>
+
+    <section id="detail" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2 id="detail-name">Route</h2>
+          <button id="refresh" class="link-btn" type="button">Refresh</button>
+        </div>
+        <p id="detail-summary" class="hint"></p>
+        <p id="avail-status" class="status" role="status" aria-live="polite"></p>
+        <ol id="detail-stops" class="stops"></ol>
+        <div class="exports">
+          <button id="copy-addresses" class="ghost" type="button">Copy addresses</button>
+          <button id="delete-route" class="ghost danger" type="button">Delete route</button>
+        </div>
+      </div>
+    </section>
+
+    <footer class="credits">
+      Availability from the <a href="https://developers.google.com/maps/documentation/places/web-service/nearby-search" target="_blank" rel="noopener">Google Places API</a>
+      · chargers from <a href="https://supercharge.info" target="_blank" rel="noopener">supercharge.info</a>.
+      Live counts depend on what the network reports to Google — treat an empty-looking site as
+      encouraging, not guaranteed.
+    </footer>
+  </aside>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script type="module" src="js/routes-page.js"></script>
+</body>
+</html>

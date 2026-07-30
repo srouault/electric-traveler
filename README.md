@@ -54,6 +54,35 @@ time needed to afford that leg. Real road distances between every candidate pair
 come from one OSRM matrix call, so detours are priced honestly rather than guessed
 from straight-line distance.
 
+### Saved routes and live stall availability
+
+**Save this route** stores a plan in your browser. The **Saved routes** page
+(`routes.html`) lists them, and clicking one shows its stops with **live stall
+counts**, colour-coded green / orange / red by the free *fraction* — two free
+bays out of eight is a very different prospect from two out of forty.
+
+Live counts come from the **Google Places API (New)**, which exposes
+`availableCount` per connector group with a last-updated timestamp. Tesla's own
+endpoints are not an option: they sit behind Akamai and return 403 to anything
+that is not their app, and their availability API needs an authenticated Tesla
+account. supercharge.info and Open Charge Map are registries — they know a site
+has 8 stalls, never how many are free right now.
+
+To switch it on:
+
+1. In Google Cloud, create an API key and enable **Places API (New)**.
+2. Restrict the key to **HTTP referrers**, allowing your Pages URL.
+3. Paste it into the panel on the Saved routes page. It is stored in that
+   browser only and goes nowhere except Google.
+
+**Each refresh is one billed call per stop.** That is why *Refresh* covers only
+the planned stops, and a stop's backups are fetched separately with *Check these
+too* — a route's backups outnumber its stops about three to one. There is no
+auto-refresh on a timer, deliberately.
+
+Coverage is whatever the network reports to Google, so some sites will show
+"no live feed". Treat an empty-looking site as encouraging, not guaranteed.
+
 ---
 
 ## Using it
@@ -170,7 +199,8 @@ result if anything changed. Delete that file if you'd rather it didn't.
 ## Layout
 
 ```
-index.html                       page shell
+index.html                       planner page
+routes.html                      saved routes + live availability
 css/style.css
 js/vehicle.js                    consumption + charging-curve model
 js/geo.js                        distances, route corridor projection
@@ -179,7 +209,10 @@ js/planner.js                    candidate selection + the optimiser
 js/corridors.js                  discovers and ranks distinct road corridors
 js/map.js                        Leaflet map, markers, live location
 js/export.js                     addresses, CSV, Google Maps links
-js/app.js                        UI wiring
+js/storage.js                    saved routes in localStorage
+js/availability.js               live stall counts via Google Places
+js/app.js                        planner UI wiring
+js/routes-page.js                saved-routes UI wiring
 data/superchargers.json          generated — do not hand-edit
 scripts/fetch-superchargers.mjs  regenerates the dataset
 scripts/plan-cli.mjs             headless planner, for testing

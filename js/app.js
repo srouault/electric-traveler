@@ -6,6 +6,7 @@ import { geocode, reverseGeocode, RoutingError } from './routing.js';
 import { DEFAULTS } from './vehicle.js';
 import { initMap, drawPlan, clearPlan, watchMe, centreOnMe, hasFix } from './map.js';
 import { addressLines, toPlainText, toCsv, googleMapsUrl, stopMapUrl, copyText, download } from './export.js';
+import { saveRoute } from './storage.js';
 
 const $ = (id) => document.getElementById(id);
 const SETTINGS_KEY = 'electric-traveler.settings';
@@ -555,6 +556,20 @@ async function main() {
     if (!current) return;
     await copyText(toPlainText(current, start, end));
     flash(e.target, 'Copied ✓');
+  });
+
+  $('save-route').addEventListener('click', (e) => {
+    if (!current) return;
+    const suggested = `${start.label || 'Start'} → ${end.label || 'Destination'}`.slice(0, 60);
+    const name = prompt('Name this route:', suggested);
+    if (name === null) return; // cancelled
+    const saved = saveRoute(current, start, end, name);
+    if (!saved) {
+      say('Could not save — browser storage is full or blocked.', true);
+      return;
+    }
+    flash(e.target, 'Saved ✓');
+    say('Saved. Open “Saved routes & live stalls” to watch its Superchargers.');
   });
 
   $('download-csv').addEventListener('click', () => {
