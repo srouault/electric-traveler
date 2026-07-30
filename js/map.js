@@ -56,6 +56,20 @@ export function drawPlan(plan, start, end) {
       .addTo(stopLayer);
   });
 
+  // Backups go on first so the planned stop's pin sits above them.
+  plan.stops.forEach((s, i) => {
+    for (const alt of s.alternatives || []) {
+      L.marker([alt.lat, alt.lon], { icon: pin('pin-alt', '', alt.name) })
+        .bindPopup(
+          `<b>Backup for stop ${i + 1}</b><br>${esc(alt.name)}<br>${esc(alt.address)}<br><br>` +
+            `${alt.kw} kW · ${alt.stalls} stalls · ${alt.awayKm.toFixed(0)} km from stop ${i + 1}<br>` +
+            `You would arrive on about ${Math.round(Math.max(0, alt.socThere) * 100)}%` +
+            (alt.reachable ? (alt.tight ? ' — very tight' : '') : '<br><em>out of reach on your arrival charge</em>'),
+        )
+        .addTo(stopLayer);
+    }
+  });
+
   plan.stops.forEach((s, i) => {
     L.marker([s.lat, s.lon], { icon: pin('pin-stop', String(i + 1), s.name) })
       .bindPopup(

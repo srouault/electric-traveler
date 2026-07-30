@@ -272,6 +272,8 @@ function renderPlan(result) {
     link.textContent = 'open in maps';
     body.append(addr, meta, link);
 
+    body.appendChild(renderBackups(s));
+
     const copy = document.createElement('button');
     copy.className = 'copy';
     copy.type = 'button';
@@ -379,6 +381,61 @@ async function runCompare(fromCtl, toCtl) {
   } finally {
     button.disabled = false;
   }
+}
+
+/** Collapsed list of fallback chargers near one stop. */
+function renderBackups(stop) {
+  const alts = stop.alternatives || [];
+
+  // No fallback at all is the most useful thing this panel can tell you, so it
+  // is stated plainly rather than left as an empty section.
+  if (!alts.length) {
+    const none = document.createElement('p');
+    none.className = 'no-backup';
+    none.textContent = 'No other Supercharger within 25 km — nothing to fall back on here.';
+    return none;
+  }
+
+  const box = document.createElement('details');
+  box.className = 'backups';
+
+  const summary = document.createElement('summary');
+  summary.textContent = `${alts.length} backup${alts.length === 1 ? '' : 's'} within 25 km`;
+  box.appendChild(summary);
+
+  const ul = document.createElement('ul');
+  for (const alt of alts) {
+    const li = document.createElement('li');
+
+    const addr = document.createElement('span');
+    addr.className = 'b-addr';
+    addr.textContent = alt.address;
+
+    const meta = document.createElement('span');
+    meta.className = 'b-meta';
+    meta.textContent =
+      `${alt.awayKm.toFixed(0)} km away · ${alt.kw} kW · ${alt.stalls} stalls · ` +
+      `you'd arrive on ~${pct(Math.max(0, alt.socThere))}`;
+    if (!alt.reachable || alt.tight) {
+      const warn = document.createElement('em');
+      warn.textContent = alt.reachable ? ' — very tight' : ' — out of reach on your arrival charge';
+      meta.appendChild(warn);
+    }
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'copy';
+    copy.textContent = 'Copy';
+    copy.addEventListener('click', async () => {
+      await copyText(alt.address);
+      flash(copy, '✓');
+    });
+
+    li.append(addr, meta, copy);
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+  return box;
 }
 
 /* ------------------------------------------------------------------- plan  */

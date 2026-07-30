@@ -18,7 +18,7 @@
  */
 
 import { matrix, route, MAX_MATRIX_COORDS } from './routing.js';
-import { projectOntoRoute, simplify } from './geo.js';
+import { haversine, projectOntoRoute, simplify } from './geo.js';
 import { DEFAULTS, chargeMinutes, energyFor, legMinutes, rangeAt } from './vehicle.js';
 
 /** SoC is discretised for the search. 2% ≈ 1.3 kWh ≈ 6 km — finer than we can predict anyway. */
@@ -270,6 +270,37 @@ function mergeLegs(full, waypoints) {
 }
 
 /**
+ * Other Superchargers near a planned stop — what you drive to when you arrive
+ * and the site is full, broken, or the queue is twenty minutes deep.
+ *
+ * Distances are straight-line, so they are labelled as such; a road detour is
+ * always longer. Reachability is the part that matters: the plan plots arrival
+ * at your reserve, so diverting anywhere spends the reserve itself.
+ */
+function nearbyAlternatives(stop, sites, cfg, radiusKm = 25, max = 3) {
+  const near = [];
+  for (const s of sites) {
+    if (s.id === stop.id) continue;
+    const awayKm = haversine(stop, s);
+    if (awayKm <= radiusKm) near.push({ site: s, awayKm });
+  }
+
+  // Nearest first, but a big fast site earns a little distance forgiveness.
+  const score = (x) => x.awayKm - Math.min(x.site.stalls, 24) * 0.15 - (x.site.kw >= 250 ? 1.5 : 0);
+  near.sort((a, b) => score(a) - score(b));
+
+  return near.slice(0, max).map(({ site, awayKm }) => {
+    const roadKm = awayKm * 1.3; // crow-fly understates the drive
+    const cost = energyFor(roadKm, 90, cfg) / cfg.batteryKwh;
+    // The charge you'd actually roll in on. "Reachable" alone is no use here:
+    // the plan arrives at your reserve, so almost anything inside 25 km is
+    // technically reachable while leaving you on 1%.
+    const socThere = stop.arriveSoc - cost;
+    return { ...site, awayKm, socThere, reachable: socThere > 0.02, tight: socThere < 0.05 };
+  });
+}
+
+/**
  * Restates each leg's duration at the speed we will actually drive, keeping the
  * router's own speed alongside it so the energy model can still see it.
  */
@@ -388,7 +419,8 @@ export async function plan(start, end, sites, settings = {}, options = {}) {
   say('Building the final route…');
   const full = await route([start, ...waypoints.map((w) => w.node), end]);
   const legs = adjustLegs(mergeLegs(full, waypoints), cfg);
-  const { stops, arrivalSoc, warnings } = schedule(chosen, legs, cfg);
+  const { stops: scheduled, arrivalSoc, warnings } = schedule(chosen, legs, cfg);
+  const stops = scheduled.map((s) => ({ ...s, alternatives: nearbyAlternatives(s, sites, cfg) }));
 
   if (relaxed) {
     warnings.unshift(`Had to charge past ${Math.round(cfg.maxSoc * 100)}% to make this route work.`);

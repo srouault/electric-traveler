@@ -87,6 +87,15 @@ for (const [i, s] of result.stops.entries()) {
   console.log(`${i + 1}. ${s.name}  (${s.kw} kW, ${s.stalls} stalls)`);
   console.log(`   ${s.address}`);
   console.log(`   after ${s.legInKm.toFixed(0)} km: arrive ${pct(s.arriveSoc)} → leave ${pct(s.departSoc)}  (+${s.kwhAdded.toFixed(1)} kWh, ${Math.round(s.chargeMinutes)} min)`);
+  if (!s.alternatives?.length) {
+    console.log('   ! no other Supercharger within 25 km');
+  }
+  for (const alt of s.alternatives || []) {
+    const flag = !alt.reachable ? ', out of reach' : alt.tight ? ', very tight' : '';
+    console.log(
+      `   ↳ backup ${alt.awayKm.toFixed(0)} km: ${alt.address} (${alt.kw} kW, ${alt.stalls} stalls, arrive ~${pct(Math.max(0, alt.socThere))}${flag})`,
+    );
+  }
 }
 console.log(`\nArrive with ${pct(result.arrivalSoc)}.`);
 for (const w of result.warnings) console.log(`! ${w}`);

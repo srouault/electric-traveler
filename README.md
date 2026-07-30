@@ -16,6 +16,8 @@ Static site, no backend, no API keys. Runs on GitHub Pages.
 - Pulls every Supercharger in the five countries that is **open, non-Tesla accessible and has CCS2** (currently 666 sites).
 - Routes A→B, then picks charging stops by shortest *total* time — driving **plus** charging.
 - Gives you each stop's street address, power, stall count, arrival/departure charge and minutes plugged in.
+- Lists **backup Superchargers within 25 km** of each stop, with the charge you'd
+  arrive on if you diverted — and says plainly when a stop has no fallback at all.
 - Copy one address, copy all of them, download a CSV, or open the trip in Google Maps.
 - Tracks your current position on the map, and can use it as the starting point.
 
@@ -115,7 +117,10 @@ When two corridors are within a few kilometres of each other, pick on tolls,
 traffic, stall counts or scenery rather than a modelled time difference.
 
 **Availability is not checked.** The dataset has no live stall occupancy. On a
-Friday in August, assume a queue.
+Friday in August, assume a queue — which is what the backup list is for. Note
+that the plan arrives at your reserve, so a diversion spends the reserve itself:
+backups are annotated with the charge you'd actually roll in on, and flagged
+"very tight" below 5%. Their distances are straight-line, so the drive is longer.
 
 ---
 

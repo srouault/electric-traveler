@@ -33,6 +33,14 @@ export function toPlainText(plan, start, end) {
     lines.push(
       `   after ${s.legInKm.toFixed(0)} km · arrive ${pct(s.arriveSoc)} → leave ${pct(s.departSoc)} · ${Math.round(s.chargeMinutes)} min`,
     );
+    if (!s.alternatives?.length) lines.push('   ! no other Supercharger within 25 km');
+    for (const alt of s.alternatives || []) {
+      const flag = !alt.reachable ? ', out of reach' : alt.tight ? ', very tight' : '';
+      lines.push(
+        `   backup: ${alt.address} (${alt.awayKm.toFixed(0)} km, ${alt.kw} kW, ${alt.stalls} stalls,` +
+          ` arrive ~${pct(Math.max(0, alt.socThere))}${flag})`,
+      );
+    }
     lines.push('');
   });
   lines.push(`Destination: ${end.label || ''}`);
