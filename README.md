@@ -80,8 +80,17 @@ the planned stops, and a stop's backups are fetched separately with *Check these
 too* — a route's backups outnumber its stops about three to one. There is no
 auto-refresh on a timer, deliberately.
 
-Coverage is whatever the network reports to Google, so some sites will show
-"no live feed". Treat an empty-looking site as encouraging, not guaranteed.
+**Tesla does not publish live occupancy to Google.** This was measured, not
+assumed: at all six stops of a Saint-Raphael - Zwolle plan, the Tesla site
+returns connector counts but no `availableCount`, while Allego, Electra,
+Powerdot and Lidl sites a few hundred metres away all do. So a Supercharger
+shows its stall count and "Tesla publishes no live count", and the traffic
+light stays grey. Nothing is wrong with your key when that happens.
+
+What Google is good for here is verification: counting only the CCS2 connector
+groups reproduces our stall counts exactly. Note that a European Tesla stall is
+published twice, once as `EV_CONNECTOR_TYPE_TESLA` and once as `CCS_COMBO_2`,
+because the single cable serves both — summing every group doubles the site.
 
 ---
 

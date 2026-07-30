@@ -72,8 +72,15 @@ function pickPlace(places, stop) {
 
 /** Sums the connector groups into one free/total figure. */
 function summarise(place) {
-  const groups = place?.evChargeOptions?.connectorAggregation || [];
-  if (!groups.length) return null;
+  const all = place?.evChargeOptions?.connectorAggregation || [];
+  if (!all.length) return null;
+
+  // Google publishes a European Tesla stall twice — once as EV_CONNECTOR_TYPE_TESLA
+  // and once as CCS_COMBO_2 — because the one cable serves both. Summing every
+  // group doubles the site (Orange reads 64 for its 32 stalls). Counting CCS2
+  // alone gives the true stall count and is exactly what the iX1 plugs into.
+  const ccs2 = all.filter((g) => g.type === 'EV_CONNECTOR_TYPE_CCS_COMBO_2');
+  const groups = ccs2.length ? ccs2 : all;
 
   let available = 0;
   let total = 0;
@@ -172,8 +179,10 @@ export function levelFor(av) {
 }
 
 export function describe(av) {
-  if (!av) return 'No live data for this site';
-  if (av.available == null) return `${av.total} stalls — no live feed`;
+  if (!av) return 'Not found on Google';
+  // Tesla publishes stall counts to Google but not occupancy, so this is the
+  // normal outcome for a Supercharger rather than an error.
+  if (av.available == null) return `${av.total} stalls · Tesla publishes no live count`;
   let text = `${av.available} of ${av.total} free`;
   if (av.outOfService > 0) text += ` · ${av.outOfService} out of service`;
   return text;
